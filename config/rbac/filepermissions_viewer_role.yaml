@@ -1,0 +1,20 @@
+# permissions for end users to view filepermissions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filepermissions-viewer-role
+rules:
+- apiGroups:
+  - permissions.bigdata.wu.ac.at
+  resources:
+  - filepermissions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - permissions.bigdata.wu.ac.at
+  resources:
+  - filepermissions/status
+  verbs:
+  - get

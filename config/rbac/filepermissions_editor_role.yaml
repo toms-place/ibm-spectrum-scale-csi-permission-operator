@@ -1,0 +1,24 @@
+# permissions for end users to edit filepermissions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filepermissions-editor-role
+rules:
+- apiGroups:
+  - permissions.bigdata.wu.ac.at
+  resources:
+  - filepermissions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - permissions.bigdata.wu.ac.at
+  resources:
+  - filepermissions/status
+  verbs:
+  - get

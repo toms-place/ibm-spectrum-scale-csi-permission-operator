@@ -1,0 +1,50 @@
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - PersistentVolumeClaims
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - PersistentVolumes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - permissions.bigdata.wu.ac.at
+  resources:
+  - filepermissions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - permissions.bigdata.wu.ac.at
+  resources:
+  - filepermissions/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - permissions.bigdata.wu.ac.at
+  resources:
+  - filepermissions/status
+  verbs:
+  - get
+  - patch
+  - update

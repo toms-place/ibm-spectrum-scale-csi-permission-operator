@@ -1,0 +1,6 @@
+apiVersion: permissions.bigdata.wu.ac.at/v1alpha1
+kind: FilePermissions
+metadata:
+  name: filepermissions-sample
+spec:
+  # Add fields here

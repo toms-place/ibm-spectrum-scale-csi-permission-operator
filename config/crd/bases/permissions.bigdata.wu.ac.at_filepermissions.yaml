@@ -1,0 +1,99 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
+  name: filepermissions.permissions.bigdata.wu.ac.at
+spec:
+  group: permissions.bigdata.wu.ac.at
+  names:
+    kind: FilePermissions
+    listKind: FilePermissionsList
+    plural: filepermissions
+    singular: filepermissions
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: FilePermissions is the Schema for the filepermissions API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: FilePermissionsSpec defines the desired state of FilePermissions
+            properties:
+              execute:
+                description: Execute is an example field of FilePermissions. Edit
+                  filepermissions_types.go to remove/update
+                type: boolean
+              group:
+                description: Group is an example field of FilePermissions. Edit filepermissions_types.go
+                  to remove/update
+                type: string
+              owner:
+                description: Owner is an example field of FilePermissions. Edit filepermissions_types.go
+                  to remove/update
+                type: string
+              pvRef:
+                description: pvRef is an example field of FilePermissions. Edit filepermissions_types.go
+                  to remove/update
+                type: string
+              read:
+                description: Read is an example field of FilePermissions. Edit filepermissions_types.go
+                  to remove/update
+                type: boolean
+              write:
+                description: Write is an example field of FilePermissions. Edit filepermissions_types.go
+                  to remove/update
+                type: boolean
+            required:
+            - execute
+            - read
+            - write
+            type: object
+          status:
+            description: FilePermissionsStatus defines the observed state of FilePermissions
+            properties:
+              lastHeartbeatTime:
+                format: date-time
+                type: string
+              lastTransitionTime:
+                format: date-time
+                type: string
+              message:
+                type: string
+              reason:
+                type: string
+              status:
+                type: object
+              type:
+                type: object
+            required:
+            - status
+            - type
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
