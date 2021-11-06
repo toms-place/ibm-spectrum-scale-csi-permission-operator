@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -28,19 +29,14 @@ type FilePermissionsSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Owner is an example field of FilePermissions. Edit filepermissions_types.go to remove/update
-	Owner string `json:"owner,omitempty"`
-	// Group is an example field of FilePermissions. Edit filepermissions_types.go to remove/update
-	Group string `json:"group,omitempty"`
-	// Read is an example field of FilePermissions. Edit filepermissions_types.go to remove/update
-	Read bool `json:"read"`
-	// Write is an example field of FilePermissions. Edit filepermissions_types.go to remove/update
-	Write bool `json:"write"`
-	// Execute is an example field of FilePermissions. Edit filepermissions_types.go to remove/update
-	Execute bool `json:"execute"`
-	// pvRef is an example field of FilePermissions. Edit filepermissions_types.go to remove/update
 	// +optional
-	PvRef string `json:"pvRef"`
+	PvRefUID types.UID `json:"pvrefuid,omitempty" protobuf:"bytes,5,opt,name=PvRef,casttype=k8s.io/kubernetes/pkg/types.UID"`
+	// +optional
+	PvcRefUID types.UID `json:"pvcrefuid,omitempty" protobuf:"bytes,5,opt,name=PvcRef,casttype=k8s.io/kubernetes/pkg/types.UID"`
+	// +optional
+	PvcName string `json:"pvcname,omitempty" description:"Name of PersistentVolumeClaim"`
+	// +optional
+	PvcNamespace string `json:"pvcnamespace,omitempty" description:"Namespace of PersistentVolumeClaim"`
 }
 
 type FilePermissionsType struct{}
@@ -67,7 +63,7 @@ type FilePermissionsStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Cluster
+//+kubebuilder:resource:scope=Cluster,shortName=fp,singular=filepermission
 
 // FilePermissions is the Schema for the filepermissions API
 type FilePermissions struct {

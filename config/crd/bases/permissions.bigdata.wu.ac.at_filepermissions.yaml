@@ -13,7 +13,9 @@ spec:
     kind: FilePermissions
     listKind: FilePermissionsList
     plural: filepermissions
-    singular: filepermissions
+    shortNames:
+    - fp
+    singular: filepermission
   scope: Cluster
   versions:
   - name: v1alpha1
@@ -36,34 +38,22 @@ spec:
           spec:
             description: FilePermissionsSpec defines the desired state of FilePermissions
             properties:
-              execute:
-                description: Execute is an example field of FilePermissions. Edit
-                  filepermissions_types.go to remove/update
-                type: boolean
-              group:
-                description: Group is an example field of FilePermissions. Edit filepermissions_types.go
-                  to remove/update
+              pvcname:
                 type: string
-              owner:
-                description: Owner is an example field of FilePermissions. Edit filepermissions_types.go
-                  to remove/update
+              pvcnamespace:
                 type: string
-              pvRef:
-                description: pvRef is an example field of FilePermissions. Edit filepermissions_types.go
-                  to remove/update
+              pvcrefuid:
+                description: UID is a type that holds unique ID values, including
+                  UUIDs.  Because we don't ONLY use UUIDs, this is an alias to string.  Being
+                  a type captures intent and helps make sure that UIDs and names do
+                  not get conflated.
                 type: string
-              read:
-                description: Read is an example field of FilePermissions. Edit filepermissions_types.go
-                  to remove/update
-                type: boolean
-              write:
-                description: Write is an example field of FilePermissions. Edit filepermissions_types.go
-                  to remove/update
-                type: boolean
-            required:
-            - execute
-            - read
-            - write
+              pvrefuid:
+                description: UID is a type that holds unique ID values, including
+                  UUIDs.  Because we don't ONLY use UUIDs, this is an alias to string.  Being
+                  a type captures intent and helps make sure that UIDs and names do
+                  not get conflated.
+                type: string
             type: object
           status:
             description: FilePermissionsStatus defines the observed state of FilePermissions
