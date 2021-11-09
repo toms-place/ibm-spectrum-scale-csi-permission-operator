@@ -36,24 +36,33 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	permissionsv1alpha1 "bigdata.wu.ac.at/filepermissions/v1/api/v1alpha1"
 )
 
 type FilePermissionsReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	Log              logr.Logger
-	PvCSIDriverField string
-	PvStatusField    string
-	PodOwnerKey      string
+	Scheme      *runtime.Scheme
+	Log         logr.Logger
+	PodOwnerKey string
 }
+
+const (
+	pvCSIDriverToFilter = "spectrumscale.csi.ibm.com"
+	//TODO: use storageclass and make configurable
+	StorageClassToFilter = ""
+)
 
 //+kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions/status,verbs=get;update;patch
@@ -67,9 +76,97 @@ type FilePermissionsReconciler struct {
 func (r *FilePermissionsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	_ = log.FromContext(ctx)
-	reqLogger := r.Log.WithValues("FP:", req.NamespacedName)
+	reqLogger := r.Log.WithValues("Reconcile", req.NamespacedName)
 
 	var fp permissionsv1alpha1.FilePermissions
+	var fpSpec permissionsv1alpha1.FilePermissionsSpec
+	var fps permissionsv1alpha1.FilePermissionsList
+	//var pv corev1.PersistentVolume
+	var pvs corev1.PersistentVolumeList
+	var pvc corev1.PersistentVolumeClaim
+	//var pvcs corev1.PersistentVolumeClaimList
+	fpHandled := false
+
+	if err := r.Get(ctx, req.NamespacedName, &fp); err != nil {
+		client.IgnoreNotFound(err)
+	} else {
+		if fp.Spec.PermissionsSet == false {
+			if err := r.HandleJob(ctx, fp); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+		fpHandled = true
+
+	}
+
+	if !fpHandled {
+		if err := r.Get(ctx, req.NamespacedName, &pvc); err != nil {
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+
+		listOpts := &client.ListOptions{
+			FieldSelector: fields.OneTermEqualSelector(".metadata.name", pvc.Spec.VolumeName),
+		}
+
+		if err := r.List(ctx, &pvs, listOpts); err != nil {
+			reqLogger.Error(err, "unable to fetch pvcs")
+			return ctrl.Result{}, err
+		}
+
+		if len(pvs.Items) > 0 && pvs.Items[0].Spec.CSI.Driver == pvCSIDriverToFilter {
+
+			listOpts := &client.ListOptions{
+				FieldSelector: fields.OneTermEqualSelector(".spec.pvcrefuid", string(pvc.UID)),
+			}
+
+			if err := r.List(ctx, &fps, listOpts); err != nil {
+				reqLogger.Error(err, "unable to fetch FPs")
+				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			}
+
+			if len(fps.Items) == 0 {
+
+				fp.Name = "fp-" + pvs.Items[0].Name
+				fpSpec.PvRefUID = pvs.Items[0].UID
+				fpSpec.PvcRefUID = pvc.UID
+				fpSpec.PvcNamespace = req.Namespace
+				fpSpec.PvcName = req.Name
+				fp.Spec = fpSpec
+
+				reqLogger.Info("CREATE FP", "fp.Spec.PvcName", pvc.Name)
+
+				if err := r.Create(ctx, &fp); err != nil {
+					reqLogger.Error(err, "unable to create", "FilePermissions", fp.Name)
+					return ctrl.Result{}, err
+				}
+
+			}
+
+			if !pvc.DeletionTimestamp.IsZero() {
+				reqLogger.Info("DELETE FPs")
+
+				for i := range fps.Items {
+					if err := r.Delete(ctx, &fps.Items[i]); err != nil {
+						reqLogger.Error(err, "unable to delete", "fp", fps.Items[i].Name)
+						return ctrl.Result{}, err
+					}
+				}
+			}
+
+		}
+
+		return ctrl.Result{}, nil
+
+	}
+
+	return ctrl.Result{Requeue: true}, nil
+}
+
+func (r *FilePermissionsReconciler) HandleJob(ctx context.Context, fp permissionsv1alpha1.FilePermissions) error {
+	reqLogger := r.Log.WithValues("HandleJob", fp.Name)
+
 	var job batchv1.Job
 	var crb rbacv1.ClusterRoleBinding
 	var svcAcc corev1.ServiceAccount
@@ -83,55 +180,26 @@ func (r *FilePermissionsReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	var toleration corev1.Toleration
 	var tolerations []corev1.Toleration
 
-	if err := r.Get(ctx, req.NamespacedName, &fp); err != nil {
-		if errors.IsNotFound(err) {
-			reqLogger.Info("no FilePermissions")
-		} else {
-			reqLogger.Info("unable to fetch FilePermissions")
-			return ctrl.Result{}, err
-		}
-	}
-
 	jobName := "test-job-" + fp.Name
 	crbName := "test-crb-" + fp.Name
 	svcAccName := "test-serviceaccount-" + fp.Name
 	volumeName := "test-volume-" + fp.Name
-	//permissionFinalizerName := "permissions.bigdata.wu.ac.at/finalizer"
 
-	/*
-		if !containsString(fp.GetFinalizers(), permissionFinalizerName) {
-			controllerutil.AddFinalizer(&fp, permissionFinalizerName)
-			if err := r.Update(ctx, &fp); err != nil {
-				return ctrl.Result{}, err
-			}
-		}
-	*/
+	svcAcc.Name = svcAccName
+	svcAcc.Namespace = fp.Spec.PvcNamespace
+	crb.Name = crbName
+	crb.RoleRef.Kind = "ClusterRole"
+	crb.RoleRef.Name = "system-unrestricted-psp-role"
+	crb.RoleRef.APIGroup = "rbac.authorization.k8s.io"
 
 	err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: fp.Spec.PvcNamespace}, &job)
 	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating Job", "NS:", req.Namespace)
-
-		svcAcc.Name = svcAccName
-		svcAcc.Namespace = fp.Spec.PvcNamespace
+		reqLogger.Info("Creating Job")
 
 		if err := r.Create(ctx, &svcAcc); err != nil {
 			reqLogger.Error(err, "unable to create", "svcAcc", svcAcc)
-			return ctrl.Result{}, err
+			return err
 		}
-
-		/*
-			if !containsString(svcAcc.GetFinalizers(), permissionFinalizerName) {
-				controllerutil.AddFinalizer(&svcAcc, permissionFinalizerName)
-				if err := r.Update(ctx, &svcAcc); err != nil {
-					return ctrl.Result{}, err
-				}
-			}
-		*/
-
-		crb.Name = crbName
-		crb.RoleRef.Kind = "ClusterRole"
-		crb.RoleRef.Name = "system-unrestricted-psp-role"
-		crb.RoleRef.APIGroup = "rbac.authorization.k8s.io"
 
 		sjs := []rbacv1.Subject{}
 		sj := rbacv1.Subject{
@@ -146,17 +214,8 @@ func (r *FilePermissionsReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		if err := r.Create(ctx, &crb); err != nil {
 			reqLogger.Error(err, "unable to create", "crb", crb)
-			return ctrl.Result{}, err
+			return err
 		}
-
-		/*
-			if !containsString(crb.GetFinalizers(), permissionFinalizerName) {
-				controllerutil.AddFinalizer(&crb, permissionFinalizerName)
-				if err := r.Update(ctx, &crb); err != nil {
-					return ctrl.Result{}, err
-				}
-			}
-		*/
 
 		/*
 			//Ephemeral storage not supported
@@ -215,91 +274,63 @@ func (r *FilePermissionsReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		job.Labels = labels
 
 		if err := r.Create(ctx, &job); err != nil {
-			reqLogger.Error(err, "unable to create", "job", job)
-			return ctrl.Result{}, err
+			reqLogger.Error(err, "unable to create", "job", job.Name)
+			return err
 		}
 
-	} else if err == nil {
-		if job.Status.Succeeded == 1 {
+	} else if job.Status.Succeeded == 1 {
 
-			if err := r.Delete(ctx, &job); err != nil {
-				reqLogger.Error(err, "unable to delete", "job", jobName)
-				return ctrl.Result{}, err
-			}
+		fp.Spec.PermissionsSet = true
 
-			var pods corev1.PodList
-			if err := r.List(ctx, &pods, client.InNamespace(fp.Spec.PvcNamespace), client.MatchingFields{r.PodOwnerKey: jobName}); err != nil {
-				reqLogger.Error(err, "unable to list child Jobs")
-				return ctrl.Result{}, err
-			}
-
-			for i := range pods.Items {
-				if err := r.Delete(ctx, &pods.Items[i]); err != nil {
-					reqLogger.Error(err, "unable to delete", "pod", pods.Items[i].Name)
-					return ctrl.Result{}, err
-				}
-			}
-
-			/*
-				if err := r.Delete(ctx, &pod); err != nil {
-					reqLogger.Error(err, "unable to delete", "pod", podName)
-					return ctrl.Result{}, err
-				}
-			*/
-
-			if err := r.Get(ctx, types.NamespacedName{Name: svcAccName, Namespace: fp.Spec.PvcNamespace}, &svcAcc); err != nil {
-				reqLogger.Error(err, "unable to get", "svcAcc", svcAccName)
-				return ctrl.Result{}, err
-			}
-			if err := r.Delete(ctx, &svcAcc); err != nil {
-				reqLogger.Error(err, "unable to delete", "svcAcc", svcAccName)
-				return ctrl.Result{}, err
-			}
-
-			if err := r.Get(ctx, types.NamespacedName{Name: crbName, Namespace: fp.Spec.PvcNamespace}, &crb); err != nil {
-				reqLogger.Error(err, "unable to get", "crb", crbName)
-				return ctrl.Result{}, err
-			}
-			if err := r.Delete(ctx, &crb); err != nil {
-				reqLogger.Error(err, "unable to delete", "crb", crbName)
-				return ctrl.Result{}, err
-			}
-
-			/*
-				if err := r.Delete(ctx, &fp); err != nil {
-					reqLogger.Error(err, "unable to delete")
-					return ctrl.Result{}, err
-				}
-			*/
-
-			reqLogger.Info("all permissions set")
-			return ctrl.Result{}, nil
+		if err := r.Update(ctx, &fp); err != nil {
+			reqLogger.Error(err, "unable to update", "fp", fp.Name)
 		}
+
+		if err := r.Delete(ctx, &job); err != nil {
+			reqLogger.Error(err, "unable to delete", "job", jobName)
+			return err
+		}
+
+		var pods corev1.PodList
+		if err := r.List(ctx, &pods, client.InNamespace(fp.Spec.PvcNamespace), client.MatchingFields{r.PodOwnerKey: jobName}); err != nil {
+			reqLogger.Error(err, "unable to list child Jobs")
+			return err
+		}
+
+		for i := range pods.Items {
+			if err := r.Delete(ctx, &pods.Items[i]); err != nil {
+				reqLogger.Error(err, "unable to delete", "pod", pods.Items[i].Name)
+				return err
+			}
+		}
+
+		if err := r.Get(ctx, types.NamespacedName{Name: svcAccName, Namespace: fp.Spec.PvcNamespace}, &svcAcc); err != nil {
+			reqLogger.Error(err, "unable to get", "svcAcc", svcAccName)
+			return err
+		}
+		if err := r.Delete(ctx, &svcAcc); err != nil {
+			reqLogger.Error(err, "unable to delete", "svcAcc", svcAccName)
+			return err
+		}
+
+		if err := r.Get(ctx, types.NamespacedName{Name: crbName, Namespace: fp.Spec.PvcNamespace}, &crb); err != nil {
+			reqLogger.Error(err, "unable to get", "crb", crbName)
+			return err
+		}
+		if err := r.Delete(ctx, &crb); err != nil {
+			reqLogger.Error(err, "unable to delete", "crb", crbName)
+			return err
+		}
+
+		reqLogger.Info("all permissions set")
+		return nil
 	}
 
-	return ctrl.Result{Requeue: true}, nil
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *FilePermissionsReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, r.PodOwnerKey, func(rawObj client.Object) []string {
-		// grab the pod object, extract the owner...
-		pod := rawObj.(*corev1.Pod)
-		owner := metav1.GetControllerOf(pod)
-		if owner == nil {
-			return nil
-		}
-		// ...make sure it's a Job...
-		if owner.Kind != "Job" {
-			return nil
-		}
-
-		// ...and if so, return it
-		return []string{owner.Name}
-	}); err != nil {
-		return err
-	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&permissionsv1alpha1.FilePermissions{}).
@@ -307,24 +338,23 @@ func (r *FilePermissionsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.ServiceAccount{}).
 		Owns(&rbacv1.ClusterRoleBinding{}).
+		Watches(
+			&source.Kind{Type: &corev1.PersistentVolumeClaim{}},
+			handler.EnqueueRequestsFromMapFunc(r.PersistentVolumeClaimHandler),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+		).
 		Complete(r)
 }
 
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
+//+kubebuilder:rbac:groups="",resources=PersistentVolumesClaims,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=PersistentVolumesClaims/status,verbs=get;list;watch
+func (r *FilePermissionsReconciler) PersistentVolumeClaimHandler(object client.Object) []reconcile.Request {
+	requests := make([]reconcile.Request, 1)
+	requests[0] = reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      object.GetName(),
+			Namespace: object.GetNamespace(),
+		},
 	}
-	return false
-}
-
-func removeString(slice []string, s string) (result []string) {
-	for _, item := range slice {
-		if item == s {
-			continue
-		}
-		result = append(result, item)
-	}
-	return
+	return requests
 }

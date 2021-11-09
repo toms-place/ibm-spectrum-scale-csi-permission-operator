@@ -38,6 +38,8 @@ spec:
           spec:
             description: FilePermissionsSpec defines the desired state of FilePermissions
             properties:
+              permissionsset:
+                type: boolean
               pvcname:
                 type: string
               pvcnamespace:
@@ -54,6 +56,12 @@ spec:
                   a type captures intent and helps make sure that UIDs and names do
                   not get conflated.
                 type: string
+            required:
+            - permissionsset
+            - pvcname
+            - pvcnamespace
+            - pvcrefuid
+            - pvrefuid
             type: object
           status:
             description: FilePermissionsStatus defines the observed state of FilePermissions

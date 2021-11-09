@@ -33,10 +33,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	permissionsv1alpha1 "bigdata.wu.ac.at/filepermissions/v1/api/v1alpha1"
 	"bigdata.wu.ac.at/filepermissions/v1/controllers"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -46,10 +48,9 @@ var (
 )
 
 const (
-	PvCSIDriverField    = ".spec.csi.driver"
-	PvStatusField       = ".status.phase"
-	PvcClaimRefUIDField = ".spec.claimRef.uid"
-	PodOwnerKey         = ".metadata.labels.job-name"
+	PvCSIDriverField = ".spec.csi.driver"
+	PvStatusField    = ".status.phase"
+	PodOwnerKey      = ".metadata.labels.job-name"
 )
 
 func init() {
@@ -57,6 +58,72 @@ func init() {
 
 	utilruntime.Must(permissionsv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
+}
+
+func setupIndexes(mgr manager.Manager) {
+	ctx := context.Background()
+
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &corev1.PersistentVolume{}, PvCSIDriverField, func(rawObj client.Object) []string {
+		// Extract the CSIDriverField name from the PersistentVolume Spec, if one is provided
+		PersistentVolume := rawObj.(*corev1.PersistentVolume)
+		if PersistentVolume.Spec.CSI.Driver == "" {
+			return nil
+		}
+		return []string{PersistentVolume.Spec.CSI.Driver}
+	}); err != nil {
+		setupLog.Error(err, "unable to index")
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &corev1.PersistentVolume{}, ".metadata.name", func(rawObj client.Object) []string {
+		// Extract the CSIDriverField name from the PersistentVolume Spec, if one is provided
+		PersistentVolume := rawObj.(*corev1.PersistentVolume)
+		if PersistentVolume.ObjectMeta.Name == "" {
+			return nil
+		}
+		return []string{PersistentVolume.ObjectMeta.Name}
+	}); err != nil {
+		setupLog.Error(err, "unable to index")
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &corev1.PersistentVolumeClaim{}, ".spec.volumename", func(rawObj client.Object) []string {
+		// Extract the VolumeName from the PersistentVolumeClaim Spec, if one is provided
+		PersistentVolumeClaim := rawObj.(*corev1.PersistentVolumeClaim)
+		if PersistentVolumeClaim.Spec.VolumeName == "" {
+			return nil
+		}
+		return []string{PersistentVolumeClaim.Spec.VolumeName}
+	}); err != nil {
+		setupLog.Error(err, "unable to index")
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &permissionsv1alpha1.FilePermissions{}, ".spec.pvcrefuid", func(rawObj client.Object) []string {
+		// Extract the CSIDriverField name from the PersistentVolume Spec, if one is provided
+		FilePermissions := rawObj.(*permissionsv1alpha1.FilePermissions)
+		if FilePermissions.Spec.PvcRefUID == "" {
+			return nil
+		}
+		return []string{string(FilePermissions.Spec.PvcRefUID)}
+	}); err != nil {
+		setupLog.Error(err, "unable to index")
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &corev1.Pod{}, PodOwnerKey, func(rawObj client.Object) []string {
+		// grab the pod object, extract the owner...
+		pod := rawObj.(*corev1.Pod)
+		owner := metav1.GetControllerOf(pod)
+		if owner == nil {
+			return nil
+		}
+		// ...make sure it's a Job...
+		if owner.Kind != "Job" {
+			return nil
+		}
+
+		// ...and if so, return it
+		return []string{owner.Name}
+	}); err != nil {
+		setupLog.Error(err, "unable to index")
+	}
 }
 
 func main() {
@@ -89,62 +156,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.PersistentVolume{}, PvCSIDriverField, func(rawObj client.Object) []string {
-		// Extract the CSIDriverField name from the PersistentVolume Spec, if one is provided
-		PersistentVolume := rawObj.(*corev1.PersistentVolume)
-		if PersistentVolume.Spec.CSI.Driver == "" {
-			return nil
-		}
-		return []string{PersistentVolume.Spec.CSI.Driver}
-	}); err != nil {
-		setupLog.Error(err, "unable to index")
-	}
-
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.PersistentVolume{}, PvStatusField, func(rawObj client.Object) []string {
-		// Extract the CSIDriverField name from the PersistentVolume Spec, if one is provided
-		PersistentVolume := rawObj.(*corev1.PersistentVolume)
-		if PersistentVolume.Status.Phase == "" {
-			return nil
-		}
-		return []string{string(PersistentVolume.Status.Phase)}
-	}); err != nil {
-		setupLog.Error(err, "unable to index")
-	}
-
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.PersistentVolume{}, PvcClaimRefUIDField, func(rawObj client.Object) []string {
-		// Extract the CSIDriverField name from the PersistentVolume Spec, if one is provided
-		PersistentVolume := rawObj.(*corev1.PersistentVolume)
-		if PersistentVolume.Spec.CSI.Driver == "" {
-			return nil
-		}
-		return []string{PersistentVolume.Spec.CSI.Driver}
-	}); err != nil {
-		setupLog.Error(err, "unable to index")
-	}
+	setupIndexes(mgr)
 
 	if err = (&controllers.FilePermissionsReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		Log:              mgr.GetLogger(),
-		PvCSIDriverField: PvCSIDriverField,
-		PvStatusField:    PvStatusField,
-		PodOwnerKey:      PodOwnerKey,
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Log:         mgr.GetLogger(),
+		PodOwnerKey: PodOwnerKey,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FilePermissions")
 		os.Exit(1)
 	}
-
-	if err = (&controllers.VolumeControllerReconciler{
-		Client:           mgr.GetClient(),
-		Scheme:           mgr.GetScheme(),
-		Log:              mgr.GetLogger(),
-		PvCSIDriverField: PvCSIDriverField,
-		PvStatusField:    PvStatusField,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "VolumeController")
-		os.Exit(1)
-	}
-
+	/*
+		if err = (&controllers.VolumeControllerReconciler{
+			Client:           mgr.GetClient(),
+			Scheme:           mgr.GetScheme(),
+			Log:              mgr.GetLogger(),
+			PvCSIDriverField: PvCSIDriverField,
+			PvStatusField:    PvStatusField,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "VolumeController")
+			os.Exit(1)
+		}
+	*/
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

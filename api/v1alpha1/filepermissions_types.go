@@ -29,14 +29,11 @@ type FilePermissionsSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// +optional
-	PvRefUID types.UID `json:"pvrefuid,omitempty" protobuf:"bytes,5,opt,name=PvRef,casttype=k8s.io/kubernetes/pkg/types.UID"`
-	// +optional
-	PvcRefUID types.UID `json:"pvcrefuid,omitempty" protobuf:"bytes,5,opt,name=PvcRef,casttype=k8s.io/kubernetes/pkg/types.UID"`
-	// +optional
-	PvcName string `json:"pvcname,omitempty" description:"Name of PersistentVolumeClaim"`
-	// +optional
-	PvcNamespace string `json:"pvcnamespace,omitempty" description:"Namespace of PersistentVolumeClaim"`
+	PvRefUID       types.UID `json:"pvrefuid" protobuf:"bytes,5,opt,name=PvRef,casttype=k8s.io/kubernetes/pkg/types.UID"`
+	PvcRefUID      types.UID `json:"pvcrefuid" protobuf:"bytes,5,opt,name=PvcRef,casttype=k8s.io/kubernetes/pkg/types.UID"`
+	PvcName        string    `json:"pvcname" description:"Name of PersistentVolumeClaim"`
+	PvcNamespace   string    `json:"pvcnamespace" description:"Namespace of PersistentVolumeClaim"`
+	PermissionsSet bool      `json:"permissionsset" description:"Flag"`
 }
 
 type FilePermissionsType struct{}
