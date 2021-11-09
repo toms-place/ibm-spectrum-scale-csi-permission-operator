@@ -55,9 +55,9 @@ type VolumeReconciler struct {
 }
 
 const (
-	pvCSIDriverToFilter = "spectrumscale.csi.ibm.com"
-	//TODO: use storageclass and make configurable
-	StorageClassToFilter = ""
+	//TODO: make configurable
+	StorageClassToFilter string = "ibm-spectrum-scale-csi-fileset"
+	pvCSIDriverToFilter  string = "spectrumscale.csi.ibm.com"
 )
 
 //+kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions,verbs=get;list;watch;create;update;patch;delete
@@ -82,6 +82,10 @@ func (r *VolumeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	if err := r.Get(ctx, req.NamespacedName, &pvc); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if *pvc.Spec.StorageClassName != StorageClassToFilter {
+		return ctrl.Result{}, nil
 	}
 
 	listOpts := &client.ListOptions{
