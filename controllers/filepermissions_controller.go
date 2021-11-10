@@ -36,6 +36,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -70,15 +71,6 @@ func (r *FilePermissionsReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	var job batchv1.Job
 	var crb rbacv1.ClusterRoleBinding
 	var svcAcc corev1.ServiceAccount
-	var podSpec corev1.PodTemplateSpec
-	var volume corev1.Volume
-	var volumes []corev1.Volume
-	var container corev1.Container
-	var containers []corev1.Container
-	var volumemount corev1.VolumeMount
-	var volumemounts []corev1.VolumeMount
-	var toleration corev1.Toleration
-	var tolerations []corev1.Toleration
 
 	if err := r.Get(ctx, req.NamespacedName, &fp); err != nil {
 		client.IgnoreNotFound(err)
@@ -131,51 +123,49 @@ func (r *FilePermissionsReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				}
 			*/
 
-			volume.PersistentVolumeClaim = &corev1.PersistentVolumeClaimVolumeSource{ClaimName: fp.Spec.PvcName}
-			volume.Name = volumeName
-			volumes = append(volumes, volume)
-
-			volumemount.Name = volumeName
-			volumemount.MountPath = "/mnt/dirtochange"
-
-			volumemounts = append(volumemounts, volumemount)
-
-			container.Image = "busybox"
-			container.Name = "test-container"
-			container.VolumeMounts = volumemounts
-
-			var Command []string
-			Command = append(Command, "chmod", "777", "/mnt/dirtochange/")
-			container.Command = Command
-
-			containers = append(containers, container)
-
-			toleration.Key = "storage.provider"
-			toleration.Effect = "NoSchedule"
-			toleration.Value = "spectrum-scale"
-			tolerations = append(tolerations, toleration)
-
-			var labels map[string]string
-			labels = make(map[string]string)
-			labels["job"] = "permissions.bigdata.wu.ac.at"
-
-			podSpec.Spec.Volumes = volumes
-			podSpec.Spec.RestartPolicy = corev1.RestartPolicyOnFailure
-			podSpec.Spec.Containers = containers
-			podSpec.Spec.Tolerations = tolerations
-			podSpec.Spec.ServiceAccountName = svcAccName
-			podSpec.ObjectMeta.OwnerReferences = job.OwnerReferences
 			nonRoot := false
-			securityContext := &corev1.PodSecurityContext{
-				RunAsNonRoot: &nonRoot,
+			job := batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      jobName,
+					Namespace: fp.Spec.PvcNamespace,
+					Labels:    map[string]string{"job": "permissions.bigdata.wu.ac.at"},
+				},
+				Spec: batchv1.JobSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							OwnerReferences: job.OwnerReferences,
+						},
+						Spec: corev1.PodSpec{
+							Volumes: []corev1.Volume{{
+								VolumeSource: corev1.VolumeSource{
+									PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: fp.Spec.PvcName,
+									}},
+								Name: volumeName,
+							}},
+							RestartPolicy: corev1.RestartPolicyOnFailure,
+							Containers: []corev1.Container{{
+								Image: "busybox",
+								Name:  "change-filepermissions",
+								VolumeMounts: []corev1.VolumeMount{{
+									Name:      volumeName,
+									MountPath: "/mnt/dirtochange",
+								}},
+								Command: []string{"chmod", "777", "/mnt/dirtochange/"},
+							}},
+							ServiceAccountName: svcAccName,
+							Tolerations: []corev1.Toleration{{
+								Key:    "storage.provider",
+								Effect: "NoSchedule",
+								Value:  "spectrum-scale",
+							}},
+							SecurityContext: &corev1.PodSecurityContext{
+								RunAsNonRoot: &nonRoot,
+							},
+						},
+					},
+				},
 			}
-			podSpec.Spec.SecurityContext = securityContext
-
-			// Set the information you care about
-			job.Spec.Template = podSpec
-			job.Namespace = fp.Spec.PvcNamespace
-			job.Name = jobName
-			job.Labels = labels
 
 			if err := r.Create(ctx, &job); err != nil {
 				reqLogger.Error(err, "unable to create", "job", job.Name)
