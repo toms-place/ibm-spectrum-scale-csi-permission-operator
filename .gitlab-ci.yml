@@ -7,4 +7,4 @@ build-job:
   image: docker:dind-rootless
   stage: build
   script:
-    - docker ps
+    - make docker-build
