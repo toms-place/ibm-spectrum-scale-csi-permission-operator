@@ -53,15 +53,18 @@ type FilePermissionsReconciler struct {
 	PodOwnerKey string
 }
 
-//+kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions/finalizers,verbs=update
-//+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
-//+kubebuilder:rbac:groups="",resources=PersistentVolumes,verbs=get;list;watch
-//+kubebuilder:rbac:groups="",resources=PersistentVolumes/spec,verbs=get;list;watch
-//+kubebuilder:rbac:groups="",resources=PersistentVolumes/status,verbs=get;list;watch
-//+kubebuilder:rbac:groups="",resources=PersistentVolumeClaims,verbs=get;list
+// +kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=permissions.bigdata.wu.ac.at,resources=filepermissions/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
+// +kubebuilder:rbac:groups="rbac.authorization.k8s.io",resources=clusterrolebindings,verbs=get;list;watch;delete
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch;delete
+// +kubebuilder:rbac:groups="policy",resources=podsecuritypolicies,verbs=use
+
 func (r *FilePermissionsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	_ = log.FromContext(ctx)
@@ -76,10 +79,10 @@ func (r *FilePermissionsReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		client.IgnoreNotFound(err)
 	} else if fp.Spec.PermissionsSet == false {
 
-		jobName := "test-job-" + fp.Name
-		crbName := "test-crb-" + fp.Name
-		svcAccName := "test-serviceaccount-" + fp.Name
-		volumeName := "test-volume-" + fp.Name
+		jobName := "fp-job-" + fp.Name
+		crbName := "fp-crb-" + fp.Name
+		svcAccName := "fp-serviceaccount-" + fp.Name
+		volumeName := "fp-volume-" + fp.Name
 
 		svcAcc.Name = svcAccName
 		svcAcc.Namespace = fp.Spec.PvcNamespace

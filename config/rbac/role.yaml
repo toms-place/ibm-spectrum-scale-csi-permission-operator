@@ -9,7 +9,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - PersistentVolumeClaims
+  - persistentvolumeclaims
   verbs:
   - get
   - list
@@ -17,11 +17,49 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - PersistentVolumes
+  - persistentvolumes
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs/status
+  verbs:
+  - get
 - apiGroups:
   - permissions.bigdata.wu.ac.at
   resources:
@@ -48,3 +86,20 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - policy
+  resources:
+  - podsecuritypolicies
+  verbs:
+  - use
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
