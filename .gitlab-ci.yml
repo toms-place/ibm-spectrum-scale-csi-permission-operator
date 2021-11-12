@@ -3,7 +3,7 @@
 stages:
   - build
 
-image: registry.wu.ac.at/team-zis/infrastructure/kubernetes/dind-rootless:latest
+image: registry.wu.ac.at/team-zis/infrastructure/kubernetes/docker-rootless:latest
 before_script:
   - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
 
